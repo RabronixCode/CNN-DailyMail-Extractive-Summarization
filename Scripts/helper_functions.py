@@ -41,6 +41,7 @@ def nltk_sentence_tokenizer(data):
     elif isinstance(data, list):
         return [sent_tokenize(d) for d in data]
     
+# Removing stopwords - RETURNS A LIST
 def remove_stopwords(data):
     if isinstance(data, pd.DataFrame):
         return " ".join(word for word in data.split() if word.lower() not in stop_words)
@@ -50,7 +51,7 @@ def remove_stopwords(data):
         return data
         
     
-
+# Text lemmatization - RETURNS A LIST
 def lemmatize_text(data):
     if isinstance(data, pd.DataFrame):
         return " ".join(word for word in data.split() if word.lower() not in stop_words)

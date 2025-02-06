@@ -1,5 +1,6 @@
 
 import time
+from sklearn.ensemble import RandomForestRegressor
 from sklearn.linear_model import LinearRegression
 import numpy as np
 import pandas as pd
@@ -45,13 +46,25 @@ for i in range(len(highlights_train)):
 # FEATURE EXTRACTION - TEXT VECTORIZATION
 
 # TF-IDF
-
 documents_articles = [doc[i] for doc in articles_train for i in range(len(doc))] # All sentences from every article together
 documents_highlights = [doc[i] for doc in highlights_train for i in range(len(doc))] # All sentences from every highlights together
-#articles_train_tfidf = tv.tfidf(articles_train, documents_articles)
-#highlights_train_tfidf = tv.tfidf(highlights_train, documents_highlights)
-articles_train_tfidf, highlights_train_tfidf = tv.tfidf(articles_train, documents_articles, highlights_train, documents_highlights)
+articles_train_tfidf, highlights_train_tfidf = tv.tfidf(articles_train, documents_articles, highlights_train, documents_highlights) # Returns transformed data
 
+
+
+
+
+
+
+
+
+
+
+# WORD EMBEDDINGS
+
+
+
+# SIMILARITY SCORING
 cosine = []
 for i in range(len(articles_train_tfidf)):
     article_matrix = articles_train_tfidf[i]  # Shape: (num_article_sentences, num_features)
@@ -64,27 +77,12 @@ for i in range(len(articles_train_tfidf)):
         article_scores.append(scores)
     cosine.append(article_scores)
 
-print(df_train.head())
-print(cosine)
-#time.sleep(1999)
-
 
 # DATA, LABEL and SPLITTING
 X = np.vstack(articles_train_tfidf)
 y = np.array([score for article_scores in cosine for score in article_scores])
 
 X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.2, random_state=42)
-
-
-
-
-
-# WORD EMBEDDINGS
-
-
-
-# SIMILARITY SCORING
-
 
 
 # MODEL MAKING
@@ -109,3 +107,26 @@ mae = mean_absolute_error(y_val, y_pred)
 r2 = r2_score(y_val, y_pred)
 
 print(f"MSE {mse} \n MAE {mae} \n R2 {r2}")
+
+
+# RANDOM FOREST
+rf = RandomForestRegressor(n_estimators=100, oob_score=True)
+rf.fit(X_train, y_train)
+y_pred = rf.predict(X_val)
+
+# Perform cross-validation
+cv_mse = cross_val_score(rf, X, y, scoring='neg_mean_squared_error', cv=5)
+cv_r2 = cross_val_score(rf, X, y, scoring='r2', cv=5)
+
+# Convert negative MSE to positive
+cv_mse = -cv_mse
+
+print(f"Cross-Validation MSE: {cv_mse.mean()} ± {cv_mse.std()}")
+print(f"Cross-Validation R-squared: {cv_r2.mean()} ± {cv_r2.std()}")
+
+mse = mean_squared_error(y_val, y_pred)
+mae = mean_absolute_error(y_val, y_pred)
+r2 = r2_score(y_val, y_pred)
+oob_score = rf.oob_score_
+
+print(f"MSE {mse} \n MAE {mae} \n R2 {r2} \n OOB {oob_score}")

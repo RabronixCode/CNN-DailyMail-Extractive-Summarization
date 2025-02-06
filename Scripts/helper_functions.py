@@ -19,7 +19,7 @@ def remove_non_word_characters(data):
     elif isinstance(data, list):
         for i in range(len(data)):
             data[i] = re.sub(r"[^\w\s$%]", "", data[i])
-            print(data[i])
+            #print(data[i])
         return data
 
 
@@ -36,7 +36,7 @@ def remove_whitespaces(data):
 # NLTK sentence tokenizer - RETURNS ONLY A LIST
 def nltk_sentence_tokenizer(data):
     if isinstance(data, pd.DataFrame):
-        print(data)
+        #print(data)
         return data.apply(sent_tokenize)
     elif isinstance(data, list):
         return [sent_tokenize(d) for d in data]

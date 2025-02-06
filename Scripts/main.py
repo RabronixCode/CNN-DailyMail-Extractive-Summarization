@@ -1,7 +1,21 @@
+
+import time
+from sklearn.linear_model import LinearRegression
+import numpy as np
 import pandas as pd
+from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
+from sklearn.model_selection import cross_val_score, train_test_split
+from sklearn.preprocessing import normalize
+from torch import cosine_similarity
+import torch
 import helper_functions as hf
 import text_vectorization as tv
 import summary_generation as sg
+from numpy.linalg import norm
+
+np.set_printoptions(threshold=np.inf)  # Print entire array without truncation
+pd.set_option("display.width", 300)
+
 
 
 # Putting training data in df_train
@@ -30,12 +44,40 @@ for i in range(len(highlights_train)):
 
 # FEATURE EXTRACTION - TEXT VECTORIZATION
 
-# TF-IDF FIRST
-tfidf_vectors_articles_train = [] # LIST FOR VECTORS FOR TFIDF METHOD FOR TRAIN ARTICLES
-tfidf_vectors_highlights_train = [] # LIST FOR VECTORS FOR TFIDF METHOD FOR HIGHLIGHTS ARTICLES
-for i in range(len(articles_train)):
-    tfidf_vectors_articles_train.append(tv.tfidf(articles_train[i]))
-    tfidf_vectors_highlights_train.append(tv.tfidf(highlights_train[i]))
+# TF-IDF
+
+documents_articles = [doc[i] for doc in articles_train for i in range(len(doc))] # All sentences from every article together
+documents_highlights = [doc[i] for doc in highlights_train for i in range(len(doc))] # All sentences from every highlights together
+#articles_train_tfidf = tv.tfidf(articles_train, documents_articles)
+#highlights_train_tfidf = tv.tfidf(highlights_train, documents_highlights)
+articles_train_tfidf, highlights_train_tfidf = tv.tfidf(articles_train, documents_articles, highlights_train, documents_highlights)
+
+cosine = []
+for i in range(len(articles_train_tfidf)):
+    article_matrix = articles_train_tfidf[i]  # Shape: (num_article_sentences, num_features)
+    summary_matrix = highlights_train_tfidf[i]  # Shape: (num_summary_sentences, num_features)
+    #print(article_matrix)
+    #print(summary_matrix)
+    article_scores = []
+    for am in article_matrix:
+        scores = torch.max(cosine_similarity(torch.tensor(am), torch.tensor(summary_matrix))).item()
+        article_scores.append(scores)
+    cosine.append(article_scores)
+
+print(df_train.head())
+print(cosine)
+#time.sleep(1999)
+
+
+# DATA, LABEL and SPLITTING
+X = np.vstack(articles_train_tfidf)
+y = np.array([score for article_scores in cosine for score in article_scores])
+
+X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.2, random_state=42)
+
+
+
+
 
 # WORD EMBEDDINGS
 
@@ -46,3 +88,24 @@ for i in range(len(articles_train)):
 
 
 # MODEL MAKING
+
+# LINEAR REGRESSION
+lr = LinearRegression()
+lr.fit(X_train, y_train)
+y_pred = lr.predict(X_val)
+
+# Perform cross-validation
+cv_mse = cross_val_score(lr, X, y, scoring='neg_mean_squared_error', cv=5)
+cv_r2 = cross_val_score(lr, X, y, scoring='r2', cv=5)
+
+# Convert negative MSE to positive
+cv_mse = -cv_mse
+
+print(f"Cross-Validation MSE: {cv_mse.mean()} ± {cv_mse.std()}")
+print(f"Cross-Validation R-squared: {cv_r2.mean()} ± {cv_r2.std()}")
+
+mse = mean_squared_error(y_val, y_pred)
+mae = mean_absolute_error(y_val, y_pred)
+r2 = r2_score(y_val, y_pred)
+
+print(f"MSE {mse} \n MAE {mae} \n R2 {r2}")

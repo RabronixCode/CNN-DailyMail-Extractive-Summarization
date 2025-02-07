@@ -17,6 +17,8 @@ from numpy.linalg import norm
 np.set_printoptions(threshold=np.inf)  # Print entire array without truncation
 pd.set_option("display.width", 300)
 
+# Making of GLOVE DICTIONARY from glove.840B.300d.txt
+glove_dict = {line.split(" ")[0]: line.split(" ")[1:] for line in open(r"C:\Users\User\Desktop\Python\CNN_DailyMail\glove.840B.300d.txt", 'r')}
 
 
 # Putting training data in df_train
@@ -49,15 +51,6 @@ for i in range(len(highlights_train)):
 documents_articles = [doc[i] for doc in articles_train for i in range(len(doc))] # All sentences from every article together
 documents_highlights = [doc[i] for doc in highlights_train for i in range(len(doc))] # All sentences from every highlights together
 articles_train_tfidf, highlights_train_tfidf = tv.tfidf(articles_train, documents_articles, highlights_train, documents_highlights) # Returns transformed data
-
-
-
-
-
-
-
-
-
 
 
 # WORD EMBEDDINGS

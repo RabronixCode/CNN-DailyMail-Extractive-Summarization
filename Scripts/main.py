@@ -13,18 +13,18 @@ import helper_functions as hf
 import text_vectorization as tv
 import summary_generation as sg
 from numpy.linalg import norm
+from transformers import T5Tokenizer, T5ForConditionalGeneration
+from transformers import TrainingArguments, Trainer
+from datasets import Dataset, DatasetDict, load_dataset
+import evaluate
 
 np.set_printoptions(threshold=np.inf)  # Print entire array without truncation
 pd.set_option("display.width", 300)
-
-# Making of GLOVE DICTIONARY from glove.840B.300d.txt
-glove_dict = {line.split(" ")[0]: line.split(" ")[1:] for line in open(r"C:\Users\User\Desktop\Python\CNN_DailyMail\glove.840B.300d.txt", 'r')}
-
+"""
+print(torch.cuda.is_available()) # Checking whether GPU is working
 
 # Putting training data in df_train
 df_train = pd.read_csv(r'C:\Users\User\Desktop\Python\CNN_DailyMail\Data\train.csv')
-#print(df_train.head()) # First 5 rows
-#print(df_train.isnull().sum()) # No null rows
 
 # FIRST WE WILL DO THE SENTENCE TOKENIZATION AND SUMMARIZATION FROM THAT
 articles_train = df_train['article'].head().tolist() # Converting column to list so we can preprocess
@@ -51,11 +51,6 @@ for i in range(len(highlights_train)):
 documents_articles = [doc[i] for doc in articles_train for i in range(len(doc))] # All sentences from every article together
 documents_highlights = [doc[i] for doc in highlights_train for i in range(len(doc))] # All sentences from every highlights together
 articles_train_tfidf, highlights_train_tfidf = tv.tfidf(articles_train, documents_articles, highlights_train, documents_highlights) # Returns transformed data
-
-
-# WORD EMBEDDINGS
-
-
 
 # SIMILARITY SCORING
 cosine = []
@@ -123,3 +118,73 @@ r2 = r2_score(y_val, y_pred)
 oob_score = rf.oob_score_
 
 print(f"MSE {mse} \n MAE {mae} \n R2 {r2} \n OOB {oob_score}")
+"""
+
+# T5 (t5-large)
+model = T5ForConditionalGeneration.from_pretrained("t5-large")
+tokenizer = T5Tokenizer.from_pretrained("t5-large")
+
+def preprocess_t5(examples):
+    inputs = [f"summarize: {text}" for text in examples["article"]] # Makes a list of articles which are given prefix summarize so t5 knows what to do
+    model_inputs = tokenizer(inputs, max_length=512, truncation=True, padding="max_length") # Then we tokenize every input limited to 512
+
+    labels = tokenizer(text_target=examples["highlights"], max_length=128, truncation=True, padding="max_length")
+    model_inputs["labels"] = labels["input_ids"]
+    return model_inputs
+
+# Load Train, Validation, and Test Datasets
+dataset_files = {
+    "train": r"C:\Users\User\Desktop\Python\CNN_DailyMail\Data\train.csv",  
+    "validation": r"C:\Users\User\Desktop\Python\CNN_DailyMail\Data\validation.csv",  
+    "test": r"C:\Users\User\Desktop\Python\CNN_DailyMail\Data\test.csv"  
+}
+
+# Load dataset directly from CSV files
+dataset = DatasetDict({split: load_dataset("csv", data_files={split: path})[split].select(range(10)) for split, path in dataset_files.items()})
+
+dataset = dataset.map(preprocess_t5, batched=True)
+
+training_args = TrainingArguments(
+    output_dir='./t5_results',  # Directory where model checkpoints & logs will be saved
+    overwrite_output_dir=True,  # Overwrites old model checkpoints
+    per_device_train_batch_size=1,  # Batch size for training per GPU/CPU
+    per_device_eval_batch_size=1,  # Batch size for evaluation per GPU/CPU
+    num_train_epochs=5,  # Number of epochs (full passes through the dataset)
+    learning_rate=5e-5,  # Initial learning rate
+    weight_decay=0.01,  # Regularization to prevent overfitting
+    logging_dir='./t5-logs',  # Directory for logging
+    logging_steps=100,  # Log loss after every X steps
+    eval_strategy="epoch",  # Evaluate after every epoch ("steps" for more frequent evals)
+    save_strategy="no",  # Save model after each epoch
+    save_total_limit=2,  # Keep only the last 2 model checkpoints (delete older ones)
+    report_to="tensorboard",  # Report logs to TensorBoard for visualization
+    fp16=False,  # Use mixed-precision training (faster on GPUs)
+    gradient_accumulation_steps=1,  # Accumulate gradients over multiple batches before updating weights
+    warmup_steps=1000,  # Number of warmup steps for learning rate scheduler
+    load_best_model_at_end=True,  # Load the best model (based on evaluation metric) after training
+    metric_for_best_model="rougeL",  # Select best model based on ROUGE score
+)
+
+metric = evaluate.load("rouge")
+
+def compute_metrics(eval_pred):
+    """Compute ROUGE scores for summarization tasks."""
+    predictions, labels = eval_pred
+    decoded_preds = tokenizer.batch_decode(predictions, skip_special_tokens=True)
+    decoded_labels = tokenizer.batch_decode(labels, skip_special_tokens=True)
+    
+    result = metric.compute(predictions=decoded_preds, references=decoded_labels)
+    return {key: value.mid.fmeasure for key, value in result.items()}
+
+trainer = Trainer(
+    model=model,  # Your Transformer model (e.g., T5, BART)
+    args=training_args,  # Training arguments (defined above)
+    train_dataset=dataset["train"],  # Training dataset
+    eval_dataset=dataset["validation"],  # Validation dataset (for evaluation)
+    tokenizer=tokenizer,  # Tokenizer used for preprocessing
+    compute_metrics=compute_metrics,  # Function to compute evaluation metrics (ROUGE, BLEU, etc.)
+)
+
+trainer.train()
+metrics = trainer.evaluate()
+print("Evaluation Metrics: ", metrics)
